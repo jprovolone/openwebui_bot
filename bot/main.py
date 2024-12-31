@@ -6,7 +6,7 @@ import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
@@ -83,6 +83,7 @@ async def get_response(api, model_id: str, full_context):
 def events(user_id, api, decision_model_id, model_id):
     @sio.on("channel-events")
     async def channel_events(raw_data):
+        logger.debug(f"Received data!")
         user_data = raw_data["user"]
         data_info = raw_data["data"]
         user = User(**user_data)
