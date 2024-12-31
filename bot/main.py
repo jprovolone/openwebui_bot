@@ -2,6 +2,15 @@ import asyncio
 import socketio
 import os
 import pprint
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 from openwebui_python import OpenWebUI
 from models.data import Event, User, Data, MessageData, ChannelAccessControl, AccessControl, Channel, TypingData
 from env import WEBUI_URL, TOKEN
@@ -17,12 +26,12 @@ messages = {}
 # Event handlers
 @sio.event
 async def connect():
-    print("Connected!")
+    logger.info("Connected to WebSocket server")
 
 
 @sio.event
 async def disconnect():
-    print("Disconnected from the server!")
+    logger.info("Disconnected from WebSocket server")
 
 def sanitize_name(name: str) -> str:
     """
@@ -88,7 +97,9 @@ def events(user_id, api, decision_model_id, model_id):
             data = Data(type=data_type, data=message)
 
             if user.id != user_id:
+                logger.info(f"Received message from {user.name} in channel {channel_id}")
                 if channel_id not in messages:
+                    logger.debug(f"Initializing message history for channel {channel_id}")
                     messages[channel_id] = [{
                         "role": "system",
                         "content": 
@@ -150,17 +161,21 @@ def events(user_id, api, decision_model_id, model_id):
 
                 
                 # Determine if the AI should respond
+                logger.debug(f"Deciding whether to respond in channel {channel_id}")
                 should_respond = await decide_response_from_model(api, decision_model_id, messages[channel_id])
 
                 if should_respond:
+                    logger.info(f"Preparing to respond in channel {channel_id}")
                     # Prepare to send typing indicator and delay
                     await send_typing(sio, channel_id)
                     await asyncio.sleep(1)  # Simulate a delay
 
                     # Get the actual response
+                    logger.debug("Generating response from model")
                     response = await get_response(api, model_id, messages[channel_id])
 
                     # Log the assistant's message
+                    logger.info(f"Sending response in channel {channel_id}")
                     messages[channel_id].append({
                         "role": "assistant",
                         "name": "Toaster",
@@ -168,38 +183,41 @@ def events(user_id, api, decision_model_id, model_id):
                     })
 
                     await send_message(channel_id, response)
+                    logger.debug(f"Response sent successfully to channel {channel_id}")
 
         elif data_type == "typing":
             typing_data = data_info["data"]
             typing = TypingData(**typing_data)
             data = Data(type=data_type, data=typing)
-            # if user.id != user_id and data.data.typing:
-            #     print(f'{user.name} is typing...')
+            if user.id != user_id and data.data.typing:
+                logger.debug(f"User {user.name} is typing in channel {channel_id}")
 
 
 # Define an async function for the main workflow
 async def main():
     try:
-        print(f"Connecting to {WEBUI_URL}...")
+        logger.info(f"Attempting to connect to {WEBUI_URL}")
         await sio.connect(
             WEBUI_URL, socketio_path="/ws/socket.io", transports=["websocket"]
         )
-        print("Connection established!")
+        logger.info("Connection established successfully")
         
-        
+        logger.debug("Available models:")
         for model in api.get_models():
-            print(model.id)
+            logger.debug(f"- {model.id}")
             
 
     except Exception as e:
-        print(f"Failed to connect: {e}")
+        logger.error(f"Failed to connect: {str(e)}", exc_info=True)
         return
 
     # Callback function for user-join
     async def join_callback(data):
+        logger.info(f"User joined with ID: {data['id']}")
         events(data["id"], api, "x-ai/grok-beta", "x-ai/grok-beta")  # Attach the event handlers dynamically
 
     # Authenticate with the server
+    logger.info("Authenticating with server...")
     await sio.emit("user-join", {"auth": {"token": TOKEN}}, callback=join_callback)
 
     # Wait indefinitely to keep the connection open
