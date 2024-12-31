@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    environment:
+      - WEBUI_URL=${WEBUI_URL}
+      - TOKEN=${TOKEN}
+    restart: unless-stopped
+    volumes:
+      - ./bot:/app/bot
