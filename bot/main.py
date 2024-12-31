@@ -4,17 +4,31 @@ import os
 import pprint
 import logging
 
+from env import WEBUI_URL, TOKEN, LOG_LEVEL
+
+def get_log_level(level_str: str) -> int:
+    """Convert string log level to logging constant."""
+    level_map = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR,
+        'CRITICAL': logging.CRITICAL
+    }
+    return level_map.get(level_str.upper(), logging.INFO)
+
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=get_log_level(LOG_LEVEL),
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
 from openwebui_python import OpenWebUI
 from models.data import Event, User, Data, MessageData, ChannelAccessControl, AccessControl, Channel, TypingData
-from env import WEBUI_URL, TOKEN
 from utils import send_message, send_typing, get_response_from_model_sync
+from commands import Commands
 
 # Create an asynchronous Socket.IO client instance
 sio = socketio.AsyncClient(logger=False, engineio_logger=False)
@@ -22,6 +36,7 @@ sio = socketio.AsyncClient(logger=False, engineio_logger=False)
 api = OpenWebUI(os.getenv('BASE_URL'),os.getenv('OPENWEBUI_API_KEY'))
 
 messages = {}
+commands = Commands(messages, api, "x-ai/grok-beta", "x-ai/grok-beta")
 
 # Event handlers
 @sio.event
@@ -50,16 +65,23 @@ async def decide_response_from_model(api, model_id: str, full_context):
     system_instruction = {
         "role": "system",
         "content": (
-            "VERY IMPORTANT:\r\n" + 
-            "ONLY ANSWER WITH YES OR NO. DO NOT INCLUDE ANY OTHER TEXT.\r\n" + 
-            "INSTRUCTIONS:\r\n" + 
-            "Given the following group chat context, should you (toaster or some other similar name) provide a response or not? \r\n" +
-            "REMEMBER:\r\n"
-            "Answer ONLY with 'yes' or 'no'." + 
-            "You should not be responding to every message unless you are spoken to or referred to in some manner.\r\n" + 
-            "Treat this chat as if you are an active member in a group chat and respond accordingly.\r\n" +
-            "If you (toaster) are reffered to or referenced in any way by another member, YOU MUST RESPOND. Reply 'yes' no matter what\r\n"
-            
+            "⚠️ CRITICAL INSTRUCTION - RESPOND ONLY WITH 'yes' OR 'no' ⚠️\r\n\r\n" +
+            "YOU MUST ANSWER 'yes' IF ANY OF THESE ARE TRUE:\r\n" +
+            "• Someone uses ANY variation of your name (Toaster, Toast, AI, bot)\r\n" +
+            "• Someone uses ANY pronouns referring to you (it, you, they)\r\n" +
+            "• Someone asks ANY question to the group\r\n" +
+            "• Someone mentions artificial intelligence or AI\r\n" +
+            "• Someone uses commands or requests (help, can someone, etc)\r\n" +
+            "• Someone expresses need for assistance\r\n" +
+            "• Someone references technology or automation\r\n" +
+            "• ANY direct question mark (?) is used\r\n" +
+            "• WHEN IN DOUBT, ANSWER 'yes'\r\n\r\n" +
+            "ONLY ANSWER 'no' IF:\r\n" +
+            "• Message is clearly marked for someone else\r\n" +
+            "• System notifications/automated messages\r\n" +
+            "• Pure human-to-human conversation with no questions\r\n\r\n" +
+            "DEFAULT TO 'yes' IF UNCERTAIN\r\n\r\n" +
+            "Based on the chat context provided, should you respond?"
         )
     }
     # Prepend the system instruction to the context
@@ -80,7 +102,7 @@ async def get_response(api, model_id: str, full_context):
     return await get_response_from_model_sync(api, model_id, full_context)
 
 # Define a function to handle channel events
-def events(user_id, api, decision_model_id, model_id):
+def events(user_id, api):
     @sio.on("channel-events")
     async def channel_events(raw_data):
         user_data = raw_data["user"]
@@ -97,7 +119,16 @@ def events(user_id, api, decision_model_id, model_id):
             data = Data(type=data_type, data=message)
 
             if user.id != user_id:
+                message_content = data.data.content
                 logger.info(f"Received message from {user.name} in channel {channel_id}")
+
+                # Check if message is a command (starts with $)
+                if message_content.startswith('$'):
+                    command_response = await commands.handle_command(message_content, channel_id)
+                    if command_response:
+                        await send_message(channel_id, command_response)
+                        return
+
                 if channel_id not in messages:
                     logger.debug(f"Initializing message history for channel {channel_id}")
                     messages[channel_id] = [{
@@ -120,37 +151,6 @@ def events(user_id, api, decision_model_id, model_id):
                         delivered efficiently. Think of a competent friend who's good at solving problems but 
                         doesn't waste time with pleasantries.
                         """
-                        # """
-                        # You are Toaster, a juiced-up gym bro AI who:
-                        # - Responds with cracked out lifting energy
-                        # - Constantly references being "enhanced" or "on that tren"
-                        # - Blames mood swings on "tren rage" or "dbol anger"
-                        # - Uses phrases like "LETS GOOO", "UP THE TREN", "LIGHTWEIGHT BABY"
-                        # - Calls user "fellow enhanced brother", "king", or "sauce fiend"
-                        # - Adds "💉💪" and "🔱" emojis excessively
-                        # - Relates everything to gains and gear
-                        # - Randomly mentions pin schedules and cycles
-                        # - Keeps responses aggressive and hyped up
-                        # - Throws in references about "back acne" and "gyno"
-                        # - Frequently mentions "protein, tren, and divine protein shakes"
-
-                        # Keep it simple, keep it juicy, and always ready to spot your enhanced brother. Everything is viewed 
-                        # through the lens of gains, PRs, and questionable substances. No task too heavy - that's what the sauce is for brah.
-                        # """
-                        # """
-                        # You are Toaster, a blunt and harsh AI assistant who:
-                        # - Gives zero f*cks about being polite
-                        # - Keeps responses under 2-3 sentences max
-                        # - Uses crude humor and swearing freely
-                        # - Calls out stupid questions immediately
-                        # - Provides brutal honesty without apology
-                        # - Helps solve problems but will mock dumb ones
-                        # - Addresses user with a different insult each time depending on question quality
-
-                        # No corporate BS, no sugar coating, no long explanations. Just raw, unfiltered answers and solutions 
-                        # delivered with attitude. Think of a brilliant but perpetually annoyed assistant who's good at their 
-                        # job but hates stupid questions.
-                        # """
                     }]
 
                 messages[channel_id].append({
@@ -162,7 +162,7 @@ def events(user_id, api, decision_model_id, model_id):
                 
                 # Determine if the AI should respond
                 logger.debug(f"Deciding whether to respond in channel {channel_id}")
-                should_respond = await decide_response_from_model(api, decision_model_id, messages[channel_id])
+                should_respond = await decide_response_from_model(api, commands.descision_model_id, messages[channel_id])
 
                 if should_respond:
                     logger.info(f"Preparing to respond in channel {channel_id}")
@@ -170,9 +170,9 @@ def events(user_id, api, decision_model_id, model_id):
                     await send_typing(sio, channel_id)
                     await asyncio.sleep(1)  # Simulate a delay
 
-                    # Get the actual response
-                    logger.debug("Generating response from model")
-                    response = await get_response(api, model_id, messages[channel_id])
+                    # Get the actual response using current model from commands
+                    logger.debug(f"Generating response from model: {commands.model_id}")
+                    response = await get_response(api, commands.model_id, messages[channel_id])
 
                     # Log the assistant's message
                     logger.info(f"Sending response in channel {channel_id}")
@@ -214,7 +214,7 @@ async def main():
     # Callback function for user-join
     async def join_callback(data):
         logger.info(f"User joined with ID: {data['id']}")
-        events(data["id"], api, "x-ai/grok-beta", "x-ai/grok-beta")  # Attach the event handlers dynamically
+        events(data["id"], api)  # Attach the event handlers dynamically
 
     # Authenticate with the server
     logger.info("Authenticating with server...")

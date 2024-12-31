@@ -10,3 +10,4 @@ except ImportError:
 
 WEBUI_URL = os.getenv("WEBUI_URL", "http://localhost:8080")
 TOKEN = os.getenv("TOKEN", "")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
