@@ -6,6 +6,8 @@ services:
     environment:
       - WEBUI_URL=${WEBUI_URL}
       - TOKEN=${TOKEN}
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY}
+      - BASE_URL=${WEBUI_URL}/api
     restart: unless-stopped
     volumes:
       - ./bot:/app/bot
