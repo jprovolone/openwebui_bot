@@ -9,5 +9,3 @@ services:
       - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY}
       - BASE_URL=${WEBUI_URL}/api
     restart: unless-stopped
-    volumes:
-      - ./bot:/app/bot
