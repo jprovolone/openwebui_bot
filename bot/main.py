@@ -176,7 +176,7 @@ def events(user_id, api):
                     "name": user.name,
                     "content": data.data.content
                 })
-
+                logger.debug(f"Retrieved conversation - {conversation}")
                 # Determine if the AI should respond
                 logger.debug(f"Deciding whether to respond in channel {channel_id}")
                 should_respond = await decide_response_from_model(api, commands.descision_model_id, conversation)
