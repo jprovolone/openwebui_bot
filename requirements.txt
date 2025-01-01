@@ -22,4 +22,4 @@ wsproto==1.2.0
 yarl==1.18.3
 
 --extra-index-url https://test.pypi.org/simple/
-openwebui-python
+openwebui-python==0.0.4
