@@ -90,9 +90,9 @@ async def decide_response_from_model(api, model_id: str, full_context):
     decision_response = await get_response_from_model_sync(api, model_id, decision_context)
     
     decision_response = decision_response.strip()
-    if decision_response.lower() == 'yes':
+    if 'yes' in decision_response.lower():
         return True
-    elif decision_response.lower() == 'no':
+    elif 'no' in decision_response.lower():
         return False
     else:
         # If the response is neither 'yes' nor 'no', return the text
