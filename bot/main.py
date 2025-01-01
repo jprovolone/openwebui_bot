@@ -35,7 +35,7 @@ sio = socketio.AsyncClient(logger=False, engineio_logger=False)
 
 api = OpenWebUI(os.getenv('BASE_URL'),os.getenv('OPENWEBUI_API_KEY'))
 
-commands = Commands(api, "x-ai/grok-beta", "x-ai/grok-beta")
+commands = Commands(api, "deepseek/deepseek-chat", "deepseek/deepseek-chat")
 
 # Event handlers
 @sio.event
