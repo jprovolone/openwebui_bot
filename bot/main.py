@@ -62,7 +62,7 @@ async def decide_response_from_model(api, model_id: str, full_context):
 
     # Prepare a system message to instruct the model for decision making
     system_instruction = {
-        "role": "system",
+        "role": "user", # testing if lower parameter models do better with this role
         "content": (
             "⚠️ CRITICAL INSTRUCTION - RESPOND ONLY WITH 'yes' OR 'no' ⚠️\r\n\r\n" +
             "YOU MUST ANSWER 'yes' IF ANY OF THESE ARE TRUE:\r\n" +
