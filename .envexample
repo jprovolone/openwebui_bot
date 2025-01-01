@@ -1,0 +1,12 @@
+# .envexample
+
+WEBUI_URL=openwebui_base_url
+# Bot's jwt token
+TOKEN=bots_jwt_token
+
+# Openwebui-python
+OPENWEBUI_API_KEY=admin_api_key
+BASE_URL=WEBUI_URL/api
+
+# Logging - INFO, DEBUG, WARNING, ERROR, CRITICAL
+LOG_LEVEL=INFO
