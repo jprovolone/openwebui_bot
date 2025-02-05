@@ -41,6 +41,10 @@ class MessageData:
     user_id: str
     user: User
     id: str
+    latest_reply_at: Optional[Any] = None
+    reactions: Optional[Any] = None
+    reply_count: Optional[int] = 0
+    parent_id: Optional[str] = None
     data: Optional[Any] = None
     meta: Optional[Any] = None
 

@@ -20,6 +20,7 @@ typing_extensions==4.12.2
 urllib3==2.2.3
 wsproto==1.2.0
 yarl==1.18.3
+tiktoken==0.6.0
 
 --extra-index-url https://test.pypi.org/simple/
-openwebui-python
+openwebui-python==0.0.5

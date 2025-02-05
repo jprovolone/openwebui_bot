@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 from openwebui_python import OpenWebUI
 from models.data import Event, User, Data, MessageData, ChannelAccessControl, AccessControl, Channel, TypingData
 from utils import send_message, send_typing, get_response_from_model_sync
-from commands import Commands
+from commands.command_handler import CommandHandler
 
 # Create an asynchronous Socket.IO client instance
 sio = socketio.AsyncClient(logger=False, engineio_logger=False)
@@ -36,7 +36,7 @@ sio = socketio.AsyncClient(logger=False, engineio_logger=False)
 api = OpenWebUI(os.getenv('BASE_URL'),os.getenv('OPENWEBUI_API_KEY'))
 
 messages = {}
-commands = Commands(messages, api, "x-ai/grok-beta", "x-ai/grok-beta")
+commands = CommandHandler(messages, api, "anthropic/claude-3.5-sonnet:beta", "x-ai/grok-beta")
 
 # Event handlers
 @sio.event
@@ -162,7 +162,7 @@ def events(user_id, api):
                 
                 # Determine if the AI should respond
                 logger.debug(f"Deciding whether to respond in channel {channel_id}")
-                should_respond = await decide_response_from_model(api, commands.descision_model_id, messages[channel_id])
+                should_respond = await decide_response_from_model(api, commands.decision_model_id, messages[channel_id])
 
                 if should_respond:
                     logger.info(f"Preparing to respond in channel {channel_id}")
@@ -189,8 +189,8 @@ def events(user_id, api):
             typing_data = data_info["data"]
             typing = TypingData(**typing_data)
             data = Data(type=data_type, data=typing)
-            if user.id != user_id and data.data.typing:
-                logger.debug(f"User {user.name} is typing in channel {channel_id}")
+            # if user.id != user_id and data.data.typing:
+            #     logger.debug(f"User {user.name} is typing in channel {channel_id}")
 
 
 # Define an async function for the main workflow
@@ -212,9 +212,12 @@ async def main():
         return
 
     # Callback function for user-join
-    async def join_callback(data):
-        logger.info(f"User joined with ID: {data['id']}")
-        events(data["id"], api)  # Attach the event handlers dynamically
+    async def join_callback(data=None):
+        if data:
+            logger.info(f"User joined with ID: {data['id']}")
+            events(data["id"], api)  # Attach the event handlers dynamically
+        else:
+            logger.warning("Join callback called without data")
 
     # Authenticate with the server
     logger.info("Authenticating with server...")
@@ -223,7 +226,5 @@ async def main():
     # Wait indefinitely to keep the connection open
     await sio.wait()
 
-
-# Actually run the async `main` function using `asyncio`
 if __name__ == "__main__":
     asyncio.run(main())
