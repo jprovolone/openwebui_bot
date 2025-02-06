@@ -33,13 +33,14 @@ async def send_typing(sio: socketio.AsyncClient, channel_id: str):
         },
     )
 
-async def get_latest_messages(channel_id: str, bot_id: str = None, limit: int = 20):
+async def get_latest_messages(channel_id: str, bot_id: str = None, before_id: str = None, limit: int = 20):
     """
     Fetch the latest messages from a channel and return simplified format.
     
     Args:
         channel_id (str): The ID of the channel to fetch messages from
         bot_id (str): The bot's user ID to determine system messages
+        before_id (str, optional): Get messages before this message ID to avoid duplicates
         limit (int, optional): Maximum number of messages to fetch. Defaults to 20.
         
     Returns:
@@ -48,6 +49,8 @@ async def get_latest_messages(channel_id: str, bot_id: str = None, limit: int = 
     url = f"{WEBUI_URL}/api/v1/channels/{channel_id}/messages"
     headers = {"Authorization": f"Bearer {TOKEN}"}
     params = {"limit": limit}
+    if before_id:
+        params["before"] = before_id
 
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers, params=params) as response:
@@ -62,18 +65,18 @@ async def get_latest_messages(channel_id: str, bot_id: str = None, limit: int = 
             messages = await response.json()
             return [
                 {
-                    "role": "system" if msg.get("user", {}).get("id") == bot_id else "user",
+                    "role": "assistant" if msg.get("user", {}).get("id") == bot_id else "user",
                     "content": msg.get("content", "")
                 }
                 for msg in messages
+                if msg.get("content") and not msg.get("content").startswith("$")
             ]
 
 async def get_response_from_model_sync(api, model_id: str, messages):
     loop = asyncio.get_running_loop()
     try:
         result = await loop.run_in_executor(None, api.get_chat_completion_with_messages, model_id, messages)
-        print("Result:", result)
-        print(result.choices[0].message.content)    
+        print("Result:", result)  
         return result.choices[0].message.content
     except Exception as e:
         print("Async exception:", str(e))

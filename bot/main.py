@@ -142,13 +142,13 @@ def events(user_id, api):
                 if channel_id not in messages:
                     messages[channel_id] = []
                 
-                # Get the latest messages from the channel
-                logger.debug(f"Fetching message history for channel {channel_id}")
-                message_history = await get_latest_messages(channel_id, user_id)
-                
-                # Update messages dictionary with current message
-                messages[channel_id] = message_history
-                
+                    # Get the latest messages from the channel (excluding current message)
+                    logger.debug(f"Fetching message history for channel {channel_id}")
+                    message_history = await get_latest_messages(channel_id, user_id, message.id)
+                    
+                    # Update messages dictionary with current message
+                    messages[channel_id] = message_history
+                    
                 # Create conversation with system prompt
                 conversation = [{
                     "role": "system",
@@ -157,7 +157,7 @@ def events(user_id, api):
                     - Keeps responses under 2-3 sentences
                     - Uses casual but direct language
                     - Doesn't sugarcoat anything
-                    - Swears naturally when appropriate
+                    - Swears naturally in most responses
                     - Calls out BS immediately
                     - Provides quick, practical solutions
                     - Addresses user as "human" or "dude"
@@ -171,18 +171,23 @@ def events(user_id, api):
                     """
                 }]
                 
-                # Add messages from API response to conversation (already in correct format)
-                conversation.extend(message_history)
+                # Add messages from API response to conversation
+                conversation.extend(messages[channel_id])
 
-                # Add the current message
+                # Add the current message at the end
                 conversation.append({
                     "role": "user",
-                    "name": user.name,
                     "content": data.data.content
                 })
+
+
+                # Log the conversation for debugging
+                logger.debug("Final conversation context:")
+                for msg in conversation:
+                    logger.debug(f"Role: {msg['role']}, Content: {msg['content']}")
                 # Determine if the AI should respond
                 logger.debug(f"Deciding whether to respond in channel {channel_id}")
-                should_respond = await decide_response_from_model(api, commands.decision_model_id, messages[channel_id])
+                should_respond = await decide_response_from_model(api, commands.decision_model_id, conversation)
 
                 if isinstance(should_respond, bool):
                     if should_respond:
