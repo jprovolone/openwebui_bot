@@ -4,7 +4,7 @@ import os
 import pprint
 import logging
 
-from env import WEBUI_URL, TOKEN, LOG_LEVEL
+from bot.env import WEBUI_URL, TOKEN, LOG_LEVEL
 
 def get_log_level(level_str: str) -> int:
     """Convert string log level to logging constant."""
