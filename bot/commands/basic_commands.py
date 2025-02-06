@@ -6,7 +6,7 @@ import logging
 import urllib.parse
 import tiktoken
 from .command import Command, CommandRegistry
-from utils import get_response_from_model_sync
+from bot.utils import get_response_from_model_sync
 
 @CommandRegistry.register("help", "List all available commands and their descriptions")
 class HelpCommand(Command):
