@@ -1,3 +1,33 @@
+# Bot
+Clone repo
+```git clone this repo```
+Install requirements
+```pip install -r requirements.txt```
+*Note that this does require another unreleased python package link here*
+Setup env
+```cp .envexample .env```
+Run
+```python3 -m bot.main```
+
+## Creating a command
+In the commands directory, create a file and import base_command.py
+```from bot.commands.base_command import BaseCommand```
+Create a new class for your command and inherit the BaseCommand class
+```
+class HelpCommand(BaseCommand):
+    def __init__(self):
+        super().__init__("help", "List all available commands and their descriptions")
+
+    async def execute(self, channel_id: str, command: str = "", messages: Dict = None, api = None, model_id: str = "") -> str:
+        help_text = "Available commands:\n\n"
+        # Get commands from the registry through the parent Commands instance
+        from bot import commands
+        registry = commands.Commands(messages, api, "", model_id).registry
+        for cmd in registry.get_all_commands().values():
+            help_text += f"${cmd.name}: {cmd.description}\n"
+        return f"```\n{help_text}```"
+```
+---
 # open-webui/bot
 
 This repository provides an experimental boilerplate for building bots compatible with the **Open WebUI** "Channels" feature (introduced in version 0.5.0). It serves as a proof of concept to demonstrate bot-building capabilities while highlighting the potential of asynchronous communication enabled by Channels. 

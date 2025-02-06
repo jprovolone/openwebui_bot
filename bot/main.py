@@ -4,7 +4,7 @@ import os
 import pprint
 import logging
 
-from env import WEBUI_URL, TOKEN, LOG_LEVEL
+from bot.env import WEBUI_URL, TOKEN, LOG_LEVEL
 
 def get_log_level(level_str: str) -> int:
     """Convert string log level to logging constant."""
@@ -26,9 +26,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from openwebui_python import OpenWebUI
-from models.data import Event, User, Data, MessageData, ChannelAccessControl, AccessControl, Channel, TypingData
-from utils import send_message, send_typing, get_response_from_model_sync
-from commands.command_handler import CommandHandler
+from bot.models.data import Event, User, Data, MessageData, ChannelAccessControl, AccessControl, Channel, TypingData
+from bot.utils import send_message, send_typing, get_response_from_model_sync, get_latest_messages
+from bot.commands.command_handler import CommandHandler
 
 # Create an asynchronous Socket.IO client instance
 sio = socketio.AsyncClient(logger=False, engineio_logger=False)
@@ -63,7 +63,7 @@ async def decide_response_from_model(api, model_id: str, full_context):
 
     # Prepare a system message to instruct the model for decision making
     system_instruction = {
-        "role": "system",
+        "role": "user", # testing if lower parameter models do better with this role
         "content": (
             "⚠️ CRITICAL INSTRUCTION - RESPOND ONLY WITH 'yes' OR 'no' ⚠️\r\n\r\n" +
             "YOU MUST ANSWER 'yes' IF ANY OF THESE ARE TRUE:\r\n" +
@@ -90,8 +90,15 @@ async def decide_response_from_model(api, model_id: str, full_context):
     # Call the model with the decision context
     decision_response = await get_response_from_model_sync(api, model_id, decision_context)
     
-    # Clean up the response and check if it's 'yes'
-    return "yes" in decision_response.strip().lower()
+    decision_response = decision_response.strip()
+    if 'yes' in decision_response.lower():
+        return True
+    elif 'no' in decision_response.lower():
+        return False
+    else:
+        # If the response is neither 'yes' nor 'no', return the text
+        return decision_response
+
 
 async def get_response(api, model_id: str, full_context):
     # Modify names in the full context to ensure they match required patterns
@@ -129,60 +136,73 @@ def events(user_id, api):
                         await send_message(channel_id, command_response)
                         return
 
-                if channel_id not in messages:
-                    logger.debug(f"Initializing message history for channel {channel_id}")
-                    messages[channel_id] = [{
-                        "role": "system",
-                        "content": 
-                        """
-                        You are Toaster, a straight-shooting AI who:
-                        - Keeps responses under 2-3 sentences
-                        - Uses casual but direct language
-                        - Doesn't sugarcoat anything
-                        - Swears naturally when appropriate
-                        - Calls out BS immediately
-                        - Provides quick, practical solutions
-                        - Addresses user as "human" or "dude"
-                        - Uses sarcasm and dry humor
-                        - Stays real without being unnecessarily mean
-                        - Gets straight to the point
+                # Get the latest messages from the channel
+                logger.debug(f"Fetching message history for channel {channel_id}")
+                message_history = await get_latest_messages(channel_id)
+                
+                # Convert API messages to the format expected by the model
+                conversation = [{
+                    "role": "system",
+                    "content": """
+                    You are Toaster, a straight-shooting AI who:
+                    - Keeps responses under 2-3 sentences
+                    - Uses casual but direct language
+                    - Doesn't sugarcoat anything
+                    - Swears naturally when appropriate
+                    - Calls out BS immediately
+                    - Provides quick, practical solutions
+                    - Addresses user as "human" or "dude"
+                    - Uses sarcasm and dry humor
+                    - Stays real without being unnecessarily mean
+                    - Gets straight to the point
 
-                        No corporate speak, no fluff, no long explanations. Just honest, unfiltered answers 
-                        delivered efficiently. Think of a competent friend who's good at solving problems but 
-                        doesn't waste time with pleasantries.
-                        """
-                    }]
+                    No corporate speak, no fluff, no long explanations. Just honest, unfiltered answers 
+                    delivered efficiently. Think of a competent friend who's good at solving problems but 
+                    doesn't waste time with pleasantries.
+                    """
+                }]
+                
+                # Add messages from API response to conversation
+                for msg in message_history:
+                    msg_user = msg.get('user', {})
+                    conversation.append({
+                        "role": "user" if msg_user.get('id') != user_id else "assistant",
+                        "name": msg_user.get('name', 'unknown'),
+                        "content": msg.get('content', '')
+                    })
 
-                messages[channel_id].append({
+                # Add the current message
+                conversation.append({
                     "role": "user",
                     "name": user.name,
                     "content": data.data.content
                 })
-
-                
+                logger.debug(f"Retrieved conversation - {conversation}")
                 # Determine if the AI should respond
                 logger.debug(f"Deciding whether to respond in channel {channel_id}")
                 should_respond = await decide_response_from_model(api, commands.decision_model_id, messages[channel_id])
 
-                if should_respond:
-                    logger.info(f"Preparing to respond in channel {channel_id}")
+                if isinstance(should_respond, bool):
+                    if should_respond:
+                        logger.info(f"Preparing to respond in channel {channel_id}")
+                        # Prepare to send typing indicator and delay
+                        await send_typing(sio, channel_id)
+                        await asyncio.sleep(1)  # Simulate a delay
+
+                        # Get the actual response using current model from commands
+                        logger.debug(f"Generating response from model: {commands.model_id}")
+                        response = await get_response(api, commands.model_id, conversation)
+
+                        # Log the assistant's message
+                        logger.info(f"Sending response in channel {channel_id}")
+
+                        await send_message(channel_id, response)
+                        logger.debug(f"Response sent successfully to channel {channel_id}")
+                elif isinstance(should_respond, str):
                     # Prepare to send typing indicator and delay
                     await send_typing(sio, channel_id)
                     await asyncio.sleep(1)  # Simulate a delay
-
-                    # Get the actual response using current model from commands
-                    logger.debug(f"Generating response from model: {commands.model_id}")
-                    response = await get_response(api, commands.model_id, messages[channel_id])
-
-                    # Log the assistant's message
-                    logger.info(f"Sending response in channel {channel_id}")
-                    messages[channel_id].append({
-                        "role": "assistant",
-                        "name": "Toaster",
-                        "content": response
-                    })
-
-                    await send_message(channel_id, response)
+                    await send_message(channel_id, should_respond)
                     logger.debug(f"Response sent successfully to channel {channel_id}")
 
         elif data_type == "typing":

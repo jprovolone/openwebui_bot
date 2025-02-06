@@ -23,4 +23,4 @@ yarl==1.18.3
 tiktoken==0.6.0
 
 --extra-index-url https://test.pypi.org/simple/
-openwebui-python==0.0.5
+openwebui-python==0.0.4==0.0.5

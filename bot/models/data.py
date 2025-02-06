@@ -47,6 +47,10 @@ class MessageData:
     parent_id: Optional[str] = None
     data: Optional[Any] = None
     meta: Optional[Any] = None
+    latest_reply_at: Optional[Any] = None
+    parent_id: Optional[str] = None
+    reactions: Optional[Dict[str, int]] = None
+    reply_count: Optional[int] = None
 
 @dataclass
 class TypingData:
