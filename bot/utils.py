@@ -1,7 +1,7 @@
 import aiohttp
 import socketio
 import asyncio
-from bot.env import WEBUI_URL, TOKEN, OPENWEBUI_API_KEY
+from env import WEBUI_URL, TOKEN, OPENWEBUI_API_KEY
 
 
 async def send_message(channel_id: str, message: str):

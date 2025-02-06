@@ -4,7 +4,7 @@ import os
 import pprint
 import logging
 
-from bot.env import WEBUI_URL, TOKEN, LOG_LEVEL
+from env import WEBUI_URL, TOKEN, LOG_LEVEL
 
 def get_log_level(level_str: str) -> int:
     """Convert string log level to logging constant."""
@@ -26,9 +26,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from openwebui_python import OpenWebUI
-from bot.models.data import Event, User, Data, MessageData, ChannelAccessControl, AccessControl, Channel, TypingData
-from bot.utils import send_message, send_typing, get_response_from_model_sync, get_latest_messages
-from bot.commands.command_handler import CommandHandler
+from models.data import Event, User, Data, MessageData, ChannelAccessControl, AccessControl, Channel, TypingData
+from utils import send_message, send_typing, get_response_from_model_sync, get_latest_messages
+from commands.command_handler import CommandHandler
 
 # Create an asynchronous Socket.IO client instance
 sio = socketio.AsyncClient(logger=False, engineio_logger=False)

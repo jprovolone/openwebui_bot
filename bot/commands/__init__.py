@@ -1,4 +1,4 @@
-from bot.commands.base_command import BaseCommand, CommandRegistry
+from commands.base_command import BaseCommand, CommandRegistry
 import logging
 import os
 import importlib
