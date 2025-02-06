@@ -136,9 +136,16 @@ def events(user_id, api):
                         await send_message(channel_id, command_response)
                         return
 
+                # Initialize messages dictionary for new channels
+                if channel_id not in messages:
+                    messages[channel_id] = []
+                
                 # Get the latest messages from the channel
                 logger.debug(f"Fetching message history for channel {channel_id}")
                 message_history = await get_latest_messages(channel_id)
+                
+                # Update messages dictionary with current message
+                messages[channel_id] = message_history
                 
                 # Convert API messages to the format expected by the model
                 conversation = [{
