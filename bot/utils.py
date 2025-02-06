@@ -33,16 +33,17 @@ async def send_typing(sio: socketio.AsyncClient, channel_id: str):
         },
     )
 
-async def get_latest_messages(channel_id: str, limit: int = 20):
+async def get_latest_messages(channel_id: str, bot_id: str = None, limit: int = 20):
     """
-    Fetch the latest messages from a channel.
+    Fetch the latest messages from a channel and return simplified format.
     
     Args:
         channel_id (str): The ID of the channel to fetch messages from
+        bot_id (str): The bot's user ID to determine system messages
         limit (int, optional): Maximum number of messages to fetch. Defaults to 20.
         
     Returns:
-        dict: The response containing the messages
+        list: List of simplified message objects with role and content
     """
     url = f"{WEBUI_URL}/api/v1/channels/{channel_id}/messages"
     headers = {"Authorization": f"Bearer {TOKEN}"}
@@ -58,13 +59,21 @@ async def get_latest_messages(channel_id: str, limit: int = 20):
                     message=await response.text(),
                     headers=response.headers,
                 )
-            return await response.json()
+            messages = await response.json()
+            return [
+                {
+                    "role": "system" if msg.get("user", {}).get("id") == bot_id else "user",
+                    "content": msg.get("content", "")
+                }
+                for msg in messages
+            ]
 
 async def get_response_from_model_sync(api, model_id: str, messages):
     loop = asyncio.get_running_loop()
     try:
         result = await loop.run_in_executor(None, api.get_chat_completion_with_messages, model_id, messages)
         print("Result:", result)
+        print(result.choices[0].message.content)    
         return result.choices[0].message.content
     except Exception as e:
         print("Async exception:", str(e))

@@ -100,6 +100,8 @@ async def decide_response_from_model(api, model_id: str, full_context):
         return decision_response
 
 
+
+
 async def get_response(api, model_id: str, full_context):
     # Modify names in the full context to ensure they match required patterns
     for message in full_context:
@@ -142,12 +144,12 @@ def events(user_id, api):
                 
                 # Get the latest messages from the channel
                 logger.debug(f"Fetching message history for channel {channel_id}")
-                message_history = await get_latest_messages(channel_id)
+                message_history = await get_latest_messages(channel_id, user_id)
                 
                 # Update messages dictionary with current message
                 messages[channel_id] = message_history
                 
-                # Convert API messages to the format expected by the model
+                # Create conversation with system prompt
                 conversation = [{
                     "role": "system",
                     "content": """
@@ -169,14 +171,8 @@ def events(user_id, api):
                     """
                 }]
                 
-                # Add messages from API response to conversation
-                for msg in message_history:
-                    msg_user = msg.get('user', {})
-                    conversation.append({
-                        "role": "user" if msg_user.get('id') != user_id else "assistant",
-                        "name": msg_user.get('name', 'unknown'),
-                        "content": msg.get('content', '')
-                    })
+                # Add messages from API response to conversation (already in correct format)
+                conversation.extend(message_history)
 
                 # Add the current message
                 conversation.append({
@@ -184,7 +180,6 @@ def events(user_id, api):
                     "name": user.name,
                     "content": data.data.content
                 })
-                logger.debug(f"Retrieved conversation - {conversation}")
                 # Determine if the AI should respond
                 logger.debug(f"Deciding whether to respond in channel {channel_id}")
                 should_respond = await decide_response_from_model(api, commands.decision_model_id, messages[channel_id])
