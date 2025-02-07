@@ -2,7 +2,7 @@ import aiohttp
 import socketio
 import asyncio
 from bot.env import WEBUI_URL, TOKEN, OPENWEBUI_API_KEY
-import pprint
+import tiktoken
 
 async def send_message(channel_id: str, message: str):
     url = f"{WEBUI_URL}/api/v1/channels/{channel_id}/messages/post"
@@ -162,3 +162,49 @@ async def get_response_from_model_sync(api, model_id: str, messages):
     except Exception as e:
         print("Async exception:", str(e))
         raise
+
+def filter_conversation_by_tokens(conversation, token_limit=200000):
+    """
+    Filter a conversation array to keep it within a token limit while preserving system messages.
+    
+    Args:
+        conversation (list): List of message objects with 'role' and 'content' fields
+        token_limit (int): Maximum number of tokens allowed (default: 200,000)
+        
+    Returns:
+        list: Filtered conversation array within token limit
+    """
+    # Get the encoding for GPT-4o
+    enc = tiktoken.get_encoding("o200k_base")
+    
+    # Separate system messages from other messages
+    system_messages = [msg for msg in conversation if msg['role'] == 'system']
+    other_messages = [msg for msg in conversation if msg['role'] != 'system']
+    
+    def count_tokens(messages):
+        total = 0
+        for msg in messages:
+            # Count tokens in the content
+            content_tokens = len(enc.encode(str(msg.get('content', ''))))
+            # Add tokens for message format (role, content markers, etc)
+            format_tokens = 4  # Each message follows format: <im_start>{role}\n{content}<im_end>\n
+            total += content_tokens + format_tokens
+        return total
+    
+    # Start with all system messages
+    filtered_conversation = system_messages.copy()
+    remaining_tokens = token_limit - count_tokens(system_messages)
+    
+    # Add non-system messages from the end until we hit the token limit
+    for msg in reversed(other_messages):
+        msg_tokens = count_tokens([msg])
+        if msg_tokens <= remaining_tokens:
+            filtered_conversation.append(msg)
+            remaining_tokens -= msg_tokens
+        else:
+            break
+    
+    # Sort messages back into original order
+    filtered_conversation.sort(key=lambda x: conversation.index(x))
+    
+    return filtered_conversation

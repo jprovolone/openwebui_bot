@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 from openwebui_python import OpenWebUI
 from bot.models.data import Event, User, Data, MessageData, ChannelAccessControl, AccessControl, Channel, TypingData
-from bot.utils import send_message, send_typing, get_response_from_model_sync, get_latest_messages
+from bot.utils import send_message, send_typing, get_response_from_model_sync, get_latest_messages, filter_conversation_by_tokens
 from bot.commands.command_handler import CommandHandler
 from bot.personalities import Personalities
 
@@ -219,6 +219,8 @@ def events(user_id, api):
                 
                 # Add messages from API response to conversation
                 conversation.extend(messages[channel_id])
+
+                conversation = filter_conversation_by_tokens(conversation)
 
                 # Determine if the AI should respond
                 logger.debug(f"Deciding whether to respond in channel {channel_id}")

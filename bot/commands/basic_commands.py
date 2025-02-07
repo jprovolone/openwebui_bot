@@ -180,41 +180,44 @@ class GifCommand(Command):
         except Exception as e:
             return "*GIF search failed, but I'll keep it real - something's wrong with the GIF service*"
 
-@CommandRegistry.register("tokencheck", "Calculate the number of tokens in the current chat context")
+@CommandRegistry.register("tokencheck", "Show current conversation token usage with a progress bar")
 class TokenCheckCommand(Command):
     async def execute(self, channel_id: str, command: str = None) -> str:
         if channel_id not in self.messages or not self.messages[channel_id]:
             return "*No message context found for this channel*"
         
         try:
-            # Get the encoding for an exmaple model
+            messages = get_message_context(self.messages[channel_id], exclude_system=False)
+            
+            # Get the encoding for GPT-4o
             enc = tiktoken.encoding_for_model("gpt-4o")
             
-            # Initialize counters
-            total_tokens = 0
-            role_tokens = {"system": 0, "user": 0, "assistant": 0}
+            def count_tokens(messages):
+                total = 0
+                for msg in messages:
+                    # Count tokens in the content
+                    content_tokens = len(enc.encode(str(msg.get('content', ''))))
+                    # Add tokens for message format (role, content markers, etc)
+                    format_tokens = 4  # Each message follows format: <im_start>{role}\n{content}<im_end>\n
+                    total += content_tokens + format_tokens
+                return total
             
-            # Count tokens for each message
-            messages = get_message_context(self.messages[channel_id], exclude_system=False)
-            for message in messages:
-                # Count tokens in the parsed content
-                content_tokens = len(enc.encode(message["content"]))
-                # Add tokens for message format (role, content markers, etc)
-                format_tokens = 4  # Each message follows format: <im_start>{role}\n{content}<im_end>\n
-                message_tokens = content_tokens + format_tokens
-                
-                # Update counters
-                total_tokens += message_tokens
-                role_tokens[message["role"]] += message_tokens
+            total_tokens = count_tokens(messages)
+            token_limit = 200000
             
-            # Format the response
-            response = f"Total tokens: {total_tokens}\n\n"
-            response += "Breakdown:\n"
-            for role, count in role_tokens.items():
-                if count > 0:  # Only show roles that have messages
-                    response += f"- {role}: {count} tokens\n"
+            # Create progress bar (20 chars wide)
+            progress = min(total_tokens / token_limit, 1.0)  # Cap at 100%
+            bar_width = 20
+            filled_width = int(progress * bar_width)
+            empty_width = bar_width - filled_width
             
-            return f"```\n{response}```"
+            progress_bar = '█' * filled_width + '░' * empty_width
+            percentage = progress * 100
+            
+            response = f"Token Usage: {total_tokens:,}/{token_limit:,} ({percentage:.1f}%)\n"
+            response += f"[{progress_bar}]"
+            
+            return response
             
         except Exception as e:
             return f"*Failed to calculate tokens: {str(e)}*"
