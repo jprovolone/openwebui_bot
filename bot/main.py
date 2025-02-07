@@ -214,23 +214,37 @@ def events(user_id, api):
                         # Log the assistant's message
                         logger.info(f"Sending response in channel {channel_id}")
 
-                        # Parse JSON response and extract just the message
+                        # Try to parse as JSON first
                         try:
                             import json
                             response_data = json.loads(response)
-                            # Extract just the message from the response
+                            # Handle different JSON response formats
                             if isinstance(response_data, dict):
-                                message_content = response_data.get("message", "")
-                                if not message_content:
-                                    message_content = response_data.get("response", "")
-                                if not message_content and "message" in response_data:
+                                # Check for content.message format (like the example format)
+                                if "content" in response_data and isinstance(response_data["content"], dict):
+                                    message_content = response_data["content"].get("message", "")
+                                # Check for direct message field
+                                elif "message" in response_data:
                                     message_content = response_data["message"]
+                                # Check for content field
+                                elif "content" in response_data:
+                                    message_content = response_data["content"]
+                                else:
+                                    # If no recognized fields, use the raw response
+                                    message_content = response
+                            else:
+                                message_content = response
+                            
+                            # If we extracted an empty message, fall back to raw response
+                            if not message_content:
+                                message_content = response
+                                
                             await send_message(channel_id, message_content)
                             logger.debug(f"Response sent successfully to channel {channel_id}")
                         except json.JSONDecodeError:
-                            logger.warning("Failed to parse JSON response, using raw response")
+                            # If it's not valid JSON, use the raw response
                             await send_message(channel_id, response)
-                            logger.debug(f"Raw response sent to channel {channel_id}")
+                            logger.debug(f"Using raw response for channel {channel_id}")
                 elif isinstance(should_respond, str):
                     # Prepare to send typing indicator and delay
                     await send_typing(sio, channel_id)
