@@ -29,6 +29,7 @@ from openwebui_python import OpenWebUI
 from bot.models.data import Event, User, Data, MessageData, ChannelAccessControl, AccessControl, Channel, TypingData
 from bot.utils import send_message, send_typing, get_response_from_model_sync, get_latest_messages
 from bot.commands.command_handler import CommandHandler
+from bot.personalities import Personalities
 
 # Create an asynchronous Socket.IO client instance
 sio = socketio.AsyncClient(logger=False, engineio_logger=False)
@@ -37,18 +38,42 @@ api = OpenWebUI(os.getenv('BASE_URL'),os.getenv('OPENWEBUI_API_KEY'))
 
 messages = {}
 commands = CommandHandler(messages, api, "anthropic/claude-3.5-sonnet:beta", "x-ai/grok-beta")
-toaster_prompt = """
-                    You are Toaster, a straight-shooting AI who:
-                    - Keeps responses under 2-3 sentences
-                    - Uses casual but direct language
-                    - Doesn't sugarcoat anything
-                    - Swears naturally in most responses
-                    - Calls out BS immediately
-                    - Provides quick, practical solutions
-                    - Addresses user as "human" or "dude"
-                    - Uses sarcasm and dry humor
-                    - Stays real without being unnecessarily mean
-                    - Gets straight to the point
+toaster_prompt = Personalities.get_personality_prompt("default")
+
+# Message format documentation
+"""
+IMPORTANT - READ CAREFULLY:
+                    Messages will be provided in this format:
+                    {
+                        "role": "user",
+                        "content": {
+                            "user": {
+                                "id": "user-uuid",
+                                "name": "Username"
+                            },
+                            "message": "The actual message",
+                            "reactions": [
+                                {
+                                    "name": "melting_face",
+                                    "count": 1,
+                                    "users": ["Username1", "Username2"]
+                                }
+                            ]
+                        }
+                    }
+
+                    YOU MUST RESPOND WITH PLAIN TEXT ONLY!
+                    DO NOT FORMAT YOUR RESPONSE AS JSON OR INCLUDE ANY SPECIAL FORMATTING.
+
+                    CORRECT RESPONSE EXAMPLES:
+                    "Dude, that was weak. What's really going on?"
+                    "Shit's getting real in here. Tell me more."
+
+                    INCORRECT RESPONSE EXAMPLES:
+                    "{\"response\":\"My message here\"}"  // No JSON formatting
+                    "Username: My response here"          // No usernames
+                    "I see you got a melting_face"       // Don't reference reactions
+                    "user-uuid said something"           // Don't reference IDs
 
                     No corporate speak, no fluff, no long explanations. Just honest, unfiltered answers 
                     delivered efficiently. Think of a competent friend who's good at solving problems but 
@@ -107,9 +132,7 @@ async def decide_response_from_model(api, model_id: str, full_context):
     # Call the model with the decision context
     decision_response = await get_response_from_model_sync(api, model_id, [system_instruction])
     
-    print(decision_response)
     decision_response = decision_response.strip()
-    print(decision_response)
     if 'yes' in decision_response.lower():
         return True
     elif 'no' in decision_response.lower():
@@ -157,21 +180,35 @@ def events(user_id, api):
                         await send_message(channel_id, command_response)
                         return
 
-                # Initialize messages dictionary for new channels
+                # Initialize or update messages for the channel
                 if channel_id not in messages:
-                    messages[channel_id] = []
-                
-                    # Get the latest messages from the channel (excluding current message)
-                    logger.debug(f"Fetching message history for channel {channel_id}")
-                    message_history = await get_latest_messages(channel_id, user_id, message.id)
-                    
-                    # Update messages dictionary with current message
-                    messages[channel_id] = message_history
+                    # Get initial message history
+                    logger.debug(f"Fetching initial message history for channel {channel_id}")
+                    messages[channel_id] = await get_latest_messages(channel_id, user_id, message.id)
                 else:
-                    # Append the current message to the messages dictionary
-                    messages[channel_id].append({
+                    # Format new message in the same way as get_latest_messages
+                    import json
+                    message_data = {
                         "role": "user",
-                        "content": message_content
+                        "content": {
+                            "user": {
+                                "id": user.id,
+                                "name": user.name
+                            },
+                            "message": message_content,
+                            "reactions": [
+                                {
+                                    "name": r.get('name', ''),
+                                    "count": r.get('count', 0),
+                            "users": [user.name]  # Current user is the only reactor for new messages
+                                }
+                                for r in message.reactions or []
+                            ]
+                        }
+                    }
+                    messages[channel_id].append({
+                        "role": message_data["role"],
+                        "content": json.dumps(message_data["content"], ensure_ascii=False)
                     })
                     
                 # Create conversation with system prompt
@@ -201,8 +238,23 @@ def events(user_id, api):
                         # Log the assistant's message
                         logger.info(f"Sending response in channel {channel_id}")
 
-                        await send_message(channel_id, response)
-                        logger.debug(f"Response sent successfully to channel {channel_id}")
+                        # Parse JSON response and extract just the message
+                        try:
+                            import json
+                            response_data = json.loads(response)
+                            # Extract just the message from the response
+                            if isinstance(response_data, dict):
+                                message_content = response_data.get("message", "")
+                                if not message_content:
+                                    message_content = response_data.get("response", "")
+                                if not message_content and "message" in response_data:
+                                    message_content = response_data["message"]
+                            await send_message(channel_id, message_content)
+                            logger.debug(f"Response sent successfully to channel {channel_id}")
+                        except json.JSONDecodeError:
+                            logger.warning("Failed to parse JSON response, using raw response")
+                            await send_message(channel_id, response)
+                            logger.debug(f"Raw response sent to channel {channel_id}")
                 elif isinstance(should_respond, str):
                     # Prepare to send typing indicator and delay
                     await send_typing(sio, channel_id)

@@ -5,8 +5,10 @@ import random
 import logging
 import urllib.parse
 import tiktoken
-from .command import Command, CommandRegistry
-from bot.utils import get_response_from_model_sync
+from .command_registry import Command, CommandRegistry
+from bot.utils import get_response_from_model_sync, get_message_context
+from bot.personalities import Personalities
+import pprint
 
 @CommandRegistry.register("help", "List all available commands and their descriptions")
 class HelpCommand(Command):
@@ -37,7 +39,9 @@ class ModelListCommand(Command):
             for model in models:
                 model_list += f"- {model.id}"
                 if model.id == self.model_id:
-                    model_list += " (current)"
+                    model_list += " (current conversation model)"
+                elif model.id == self.decision_model_id:
+                    model_list += " (current decision model)"
                 model_list += "\n"
             return f"```\n{model_list}```"
         except Exception as e:
@@ -87,7 +91,7 @@ class VibeCheckCommand(Command):
         if channel_id not in self.messages or len(self.messages[channel_id]) <= 1:
             return "*Channel's dead AF, no vibe detected*"
         
-        recent_messages = [m for m in self.messages[channel_id] if m["role"] != "system"][-10:]
+        recent_messages = get_message_context(self.messages[channel_id], exclude_system=True, last_n=10)
         
         system_prompt = {
             "role": "system",
@@ -98,7 +102,7 @@ class VibeCheckCommand(Command):
         }
         
         context = [system_prompt] + recent_messages
-        response = await get_response_from_model_sync(self.api, self.model_id, context)
+        response = await get_response_from_model_sync(self.api, self.decision_model_id, context)
         return f"*{response}*"
 
 @CommandRegistry.register("roast", "Generate an AI-powered playful roast")
@@ -114,7 +118,7 @@ class RoastCommand(Command):
             - Using casual, modern language"""
         }
         
-        response = await get_response_from_model_sync(self.api, self.model_id, [system_prompt])
+        response = await get_response_from_model_sync(self.api, self.decision_model_id, [system_prompt])
         return f"*{response}*"
 
 @CommandRegistry.register("8ball", "Ask the AI magic 8-ball a question (usage: $8ball your question)")
@@ -136,7 +140,7 @@ class Magic8BallCommand(Command):
         }
         
         context = [system_prompt, {"role": "user", "content": question}]
-        response = await get_response_from_model_sync(self.api, self.model_id, context)
+        response = await get_response_from_model_sync(self.api, self.decision_model_id, context)
         return f"*{response}*"
 
 @CommandRegistry.register("gif", "Generate a reaction GIF based on recent chat context")
@@ -145,7 +149,7 @@ class GifCommand(Command):
         if channel_id not in self.messages or len(self.messages[channel_id]) <= 1:
             return "*No chat context found to generate a GIF from*"
         
-        recent_messages = [m for m in self.messages[channel_id] if m["role"] != "system"][-5:]
+        recent_messages = get_message_context(self.messages[channel_id], exclude_system=True, last_n=5)
         
         system_prompt = {
             "role": "system",
@@ -156,7 +160,7 @@ class GifCommand(Command):
         }
         
         context = [system_prompt] + recent_messages
-        search_query = await get_response_from_model_sync(self.api, self.model_id, context)
+        search_query = await get_response_from_model_sync(self.api, self.decision_model_id, context)
         
         search_query = search_query.strip().lower()
         encoded_query = urllib.parse.quote(search_query)
@@ -191,8 +195,9 @@ class TokenCheckCommand(Command):
             role_tokens = {"system": 0, "user": 0, "assistant": 0}
             
             # Count tokens for each message
-            for message in self.messages[channel_id]:
-                # Count tokens in the content
+            messages = get_message_context(self.messages[channel_id], exclude_system=False)
+            for message in messages:
+                # Count tokens in the parsed content
                 content_tokens = len(enc.encode(message["content"]))
                 # Add tokens for message format (role, content markers, etc)
                 format_tokens = 4  # Each message follows format: <im_start>{role}\n{content}<im_end>\n
@@ -213,3 +218,82 @@ class TokenCheckCommand(Command):
             
         except Exception as e:
             return f"*Failed to calculate tokens: {str(e)}*"
+
+@CommandRegistry.register("personality", "Switch Toaster's personality (usage: $personality [type] - Available types: default, cowboy, surfer, cyberpunk)")
+class PersonalityCommand(Command):
+    async def execute(self, channel_id: str, command: str) -> str:
+        try:
+            # Extract personality type from command
+            personality_type = command[len("$personality"):].strip().lower()
+            
+            if not personality_type:
+                available = ", ".join(Personalities.get_available_personalities())
+                return f"*Specify a personality type. Available types: {available}*"
+            
+            # Get available personalities
+            available_personalities = Personalities.get_available_personalities()
+            
+            # If it's a predefined personality, use that
+            if personality_type in available_personalities:
+                new_prompt = Personalities.get_personality_prompt(personality_type)
+            else:
+                # Generate custom personality traits using AI
+                system_prompt = {
+                    "role": "system",
+                    "content": """Generate 5 unique personality traits for Toaster as a specific type of character.
+                    Focus on:
+                    - Speech patterns and slang
+                    - Being hilarious and unfiltered
+                    - References and metaphors they'd use
+                    - How they address users
+                    - Attitude and mannerisms
+                    - Special quirks or characteristics
+                    
+                    Format as bullet points ONLY. Be creative and specific."""
+                }
+                
+                user_prompt = {
+                    "role": "user",
+                    "content": f"Generate traits for Toaster as a {personality_type}"
+                }
+                
+                # Get AI-generated traits
+                custom_traits = await get_response_from_model_sync(self.api, self.decision_model_id, [system_prompt, user_prompt])
+                
+                # Create new prompt with custom traits
+                new_prompt = f"""
+                You are Toaster, a {personality_type} AI who:
+                {Personalities.BASE}
+                Additional traits:
+                {custom_traits}
+                """
+                new_prompt = Personalities.get_personality_prompt(personality_type, new_prompt)
+            
+            # Update the system prompt for this channel
+            if channel_id in self.messages:
+                # Find and update the system message
+                for message in self.messages[channel_id]:
+                    if message["role"] == "system":
+                        message["content"] = new_prompt
+                        break
+                else:
+                    # If no system message found, add one
+                    self.messages[channel_id].insert(0, {
+                        "role": "system",
+                        "content": new_prompt
+                    })
+                pprint.pprint(self.messages[channel_id])
+            else:
+                # Initialize channel messages with new personality
+                self.messages[channel_id] = [{
+                    "role": "system",
+                    "content": new_prompt
+                }]
+            
+            return f"*Switched to {personality_type} personality. Yeehaw!*" if personality_type == "cowboy" else \
+                   f"*Switched to {personality_type} personality. Cowabunga!*" if personality_type == "surfer" else \
+                   f"*Switched to {personality_type} personality. [SYSTEM_RECALIBRATED]*" if personality_type == "cyberpunk" else \
+                   f"*Switched to {personality_type} personality.*"
+            
+        except Exception as e:
+            return f"*Failed to switch personality: {str(e)}*"

@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-from .command import Command, CommandRegistry
+from .command_registry import Command, CommandRegistry
 
 class CommandHandler:
     def __init__(self, messages: Dict, api, decision_model_id: str, model_id: str):
