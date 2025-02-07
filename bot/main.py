@@ -181,35 +181,10 @@ def events(user_id, api):
                         return
 
                 # Initialize or update messages for the channel
-                if channel_id not in messages:
-                    # Get initial message history
-                    logger.debug(f"Fetching initial message history for channel {channel_id}")
-                    messages[channel_id] = await get_latest_messages(channel_id, user_id, message.id)
-                else:
-                    # Format new message in the same way as get_latest_messages
-                    import json
-                    message_data = {
-                        "role": "user",
-                        "content": {
-                            "user": {
-                                "id": user.id,
-                                "name": user.name
-                            },
-                            "message": message_content,
-                            "reactions": [
-                                {
-                                    "name": r.get('name', ''),
-                                    "count": r.get('count', 0),
-                            "users": [user.name]  # Current user is the only reactor for new messages
-                                }
-                                for r in message.reactions or []
-                            ]
-                        }
-                    }
-                    messages[channel_id].append({
-                        "role": message_data["role"],
-                        "content": json.dumps(message_data["content"], ensure_ascii=False)
-                    })
+
+                # Get initial message history
+                logger.debug(f"Fetching message history for channel {channel_id}")
+                messages[channel_id] = await m(channel_id, user_id, message.id)
                     
                 # Create conversation with system prompt
                 conversation = [{
@@ -232,7 +207,6 @@ def events(user_id, api):
                         # Prepare to send typing indicator and delay
                         await send_typing(sio, channel_id)
 
-                        pprint.pprint(conversation)
                         # Get the actual response using current model from commands
                         logger.debug(f"Generating response from model: {commands.model_id}")
                         response = await get_response(api, commands.model_id, conversation)

@@ -3,6 +3,8 @@ import socketio
 import asyncio
 from bot.env import WEBUI_URL, TOKEN, OPENWEBUI_API_KEY
 import tiktoken
+import json
+import pprint
 
 async def send_message(channel_id: str, message: str):
     url = f"{WEBUI_URL}/api/v1/channels/{channel_id}/messages/post"
@@ -71,9 +73,22 @@ async def get_latest_messages(channel_id: str, bot_id: str = None, before_id: st
                 if user.get("id") and user.get("name"):
                     user_map[user["id"]] = user["name"]
 
-            formatted_messages = []
+            # Filter out command messages and their bot responses
+            filtered_messages = []
+            skip_next_bot = False
+            
             for msg in reversed(messages):
-                if not msg.get("content") or msg.get("content").startswith("$"):
+                if not msg.get("content"):
+                    continue
+                    
+                # Skip command messages
+                if msg.get("content").startswith("$"):
+                    skip_next_bot = True
+                    continue
+                    
+                # If we're looking for a bot message to skip
+                if skip_next_bot and msg.get("user", {}).get("id") == bot_id:
+                    skip_next_bot = False
                     continue
                 
                 # Create message data as a JSON string
@@ -97,13 +112,13 @@ async def get_latest_messages(channel_id: str, bot_id: str = None, before_id: st
                 }
                 
                 # Convert to JSON string with proper Unicode handling
-                import json
-                formatted_messages.append({
+                filtered_messages.append({
                     "role": message_data["role"],
                     "content": json.dumps(message_data["content"], ensure_ascii=False)
                 })
             
-            return formatted_messages
+            pprint.pprint(filtered_messages)
+            return filtered_messages
 
 def parse_message_content(message):
     """

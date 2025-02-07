@@ -187,7 +187,7 @@ class TokenCheckCommand(Command):
             return "*No message context found for this channel*"
         
         try:
-            messages = get_message_context(self.messages[channel_id], exclude_system=False)
+            messages = get_message_context(self.messages[channel_id], exclude_system=False, bot_id=self.bot_id)
             
             # Get the encoding for GPT-4o
             enc = tiktoken.encoding_for_model("gpt-4o")
