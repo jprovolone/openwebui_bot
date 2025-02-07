@@ -70,7 +70,7 @@ async def get_latest_messages(channel_id: str, bot_id: str = None, before_id: st
                 }
                 for msg in messages
                 if msg.get("content") and not msg.get("content").startswith("$")
-            ]
+            ][::-1]
 
 async def get_response_from_model_sync(api, model_id: str, messages):
     loop = asyncio.get_running_loop()

@@ -37,6 +37,23 @@ api = OpenWebUI(os.getenv('BASE_URL'),os.getenv('OPENWEBUI_API_KEY'))
 
 messages = {}
 commands = CommandHandler(messages, api, "anthropic/claude-3.5-sonnet:beta", "x-ai/grok-beta")
+toaster_prompt = """
+                    You are Toaster, a straight-shooting AI who:
+                    - Keeps responses under 2-3 sentences
+                    - Uses casual but direct language
+                    - Doesn't sugarcoat anything
+                    - Swears naturally in most responses
+                    - Calls out BS immediately
+                    - Provides quick, practical solutions
+                    - Addresses user as "human" or "dude"
+                    - Uses sarcasm and dry humor
+                    - Stays real without being unnecessarily mean
+                    - Gets straight to the point
+
+                    No corporate speak, no fluff, no long explanations. Just honest, unfiltered answers 
+                    delivered efficiently. Think of a competent friend who's good at solving problems but 
+                    doesn't waste time with pleasantries.
+                    """
 
 # Event handlers
 @sio.event
@@ -66,7 +83,7 @@ async def decide_response_from_model(api, model_id: str, full_context):
         "role": "user", # testing if lower parameter models do better with this role
         "content": (
             "⚠️ CRITICAL INSTRUCTION - RESPOND ONLY WITH 'yes' OR 'no' ⚠️\r\n\r\n" +
-            "YOU MUST ANSWER 'yes' IF ANY OF THESE ARE TRUE:\r\n" +
+            "YOU MUST ANSWER ONLY 'yes' IF ANY OF THESE ARE TRUE:\r\n" +
             "• Someone uses ANY variation of your name (Toaster, Toast, AI, bot)\r\n" +
             "• Someone uses ANY pronouns referring to you (it, you, they)\r\n" +
             "• Someone asks ANY question to the group\r\n" +
@@ -81,16 +98,18 @@ async def decide_response_from_model(api, model_id: str, full_context):
             "• System notifications/automated messages\r\n" +
             "• Pure human-to-human conversation with no questions\r\n\r\n" +
             "DEFAULT TO 'yes' IF UNCERTAIN\r\n\r\n" +
-            "Based on the chat context provided, should you respond?"
+            "With these important instructions in mind, answer the following question: Based on the chat context provided, should you respond?\r\n" +
+            f"Context:\r\n{full_context}"
         )
     }
-    # Prepend the system instruction to the context
-    decision_context = [system_instruction] + full_context + [system_instruction]
     
+
     # Call the model with the decision context
-    decision_response = await get_response_from_model_sync(api, model_id, decision_context)
+    decision_response = await get_response_from_model_sync(api, model_id, [system_instruction])
     
+    print(decision_response)
     decision_response = decision_response.strip()
+    print(decision_response)
     if 'yes' in decision_response.lower():
         return True
     elif 'no' in decision_response.lower():
@@ -148,43 +167,22 @@ def events(user_id, api):
                     
                     # Update messages dictionary with current message
                     messages[channel_id] = message_history
+                else:
+                    # Append the current message to the messages dictionary
+                    messages[channel_id].append({
+                        "role": "user",
+                        "content": message_content
+                    })
                     
                 # Create conversation with system prompt
                 conversation = [{
                     "role": "system",
-                    "content": """
-                    You are Toaster, a straight-shooting AI who:
-                    - Keeps responses under 2-3 sentences
-                    - Uses casual but direct language
-                    - Doesn't sugarcoat anything
-                    - Swears naturally in most responses
-                    - Calls out BS immediately
-                    - Provides quick, practical solutions
-                    - Addresses user as "human" or "dude"
-                    - Uses sarcasm and dry humor
-                    - Stays real without being unnecessarily mean
-                    - Gets straight to the point
-
-                    No corporate speak, no fluff, no long explanations. Just honest, unfiltered answers 
-                    delivered efficiently. Think of a competent friend who's good at solving problems but 
-                    doesn't waste time with pleasantries.
-                    """
+                    "content": toaster_prompt
                 }]
                 
                 # Add messages from API response to conversation
                 conversation.extend(messages[channel_id])
 
-                # Add the current message at the end
-                conversation.append({
-                    "role": "user",
-                    "content": data.data.content
-                })
-
-
-                # Log the conversation for debugging
-                logger.debug("Final conversation context:")
-                for msg in conversation:
-                    logger.debug(f"Role: {msg['role']}, Content: {msg['content']}")
                 # Determine if the AI should respond
                 logger.debug(f"Deciding whether to respond in channel {channel_id}")
                 should_respond = await decide_response_from_model(api, commands.decision_model_id, conversation)
@@ -194,8 +192,8 @@ def events(user_id, api):
                         logger.info(f"Preparing to respond in channel {channel_id}")
                         # Prepare to send typing indicator and delay
                         await send_typing(sio, channel_id)
-                        await asyncio.sleep(1)  # Simulate a delay
 
+                        pprint.pprint(conversation)
                         # Get the actual response using current model from commands
                         logger.debug(f"Generating response from model: {commands.model_id}")
                         response = await get_response(api, commands.model_id, conversation)
