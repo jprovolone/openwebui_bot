@@ -184,7 +184,7 @@ def events(user_id, api):
 
                 # Get initial message history
                 logger.debug(f"Fetching message history for channel {channel_id}")
-                messages[channel_id] = await m(channel_id, user_id, message.id)
+                messages[channel_id] = await (channel_id, user_id, message.id)
                     
                 # Create conversation with system prompt
                 conversation = [{
