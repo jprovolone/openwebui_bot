@@ -37,7 +37,7 @@ sio = socketio.AsyncClient(logger=False, engineio_logger=False)
 api = OpenWebUI(os.getenv('BASE_URL'),os.getenv('OPENWEBUI_API_KEY'))
 
 messages = {}
-commands = CommandHandler(messages, api, "anthropic/claude-3.5-sonnet:beta", "x-ai/grok-beta")
+commands = CommandHandler(messages, api, "openai/gpt-4.1-nano", "openai/gpt-4.1-nano")
 toaster_prompt = Personalities.get_personality_prompt("default")
 
 # Message format documentation
