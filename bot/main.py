@@ -37,48 +37,44 @@ sio = socketio.AsyncClient(logger=False, engineio_logger=False)
 api = OpenWebUI(os.getenv('BASE_URL'),os.getenv('OPENWEBUI_API_KEY'))
 
 messages = {}
-commands = CommandHandler(messages, api, "openai/gpt-4.1-nano", "openai/gpt-4.1-nano")
+commands = CommandHandler(messages, api, "openai/gpt-4.1", "openai/gpt-4.1-nano")
 toaster_prompt = Personalities.get_personality_prompt("default")
 
 # Message format documentation
 """
 IMPORTANT - READ CAREFULLY:
-                    Messages will be provided in this format:
-                    {
-                        "role": "user",
-                        "content": {
-                            "user": {
-                                "id": "user-uuid",
-                                "name": "Username"
-                            },
-                            "message": "The actual message",
-                            "reactions": [
-                                {
-                                    "name": "melting_face",
-                                    "count": 1,
-                                    "users": ["Username1", "Username2"]
-                                }
-                            ]
-                        }
-                    }
-
-                    YOU MUST RESPOND WITH PLAIN TEXT ONLY!
-                    DO NOT FORMAT YOUR RESPONSE AS JSON OR INCLUDE ANY SPECIAL FORMATTING.
-
-                    CORRECT RESPONSE EXAMPLES:
-                    "Dude, that was weak. What's really going on?"
-                    "Shit's getting real in here. Tell me more."
-
-                    INCORRECT RESPONSE EXAMPLES:
-                    "{\"response\":\"My message here\"}"  // No JSON formatting
-                    "Username: My response here"          // No usernames
-                    "I see you got a melting_face"       // Don't reference reactions
-                    "user-uuid said something"           // Don't reference IDs
-
-                    No corporate speak, no fluff, no long explanations. Just honest, unfiltered answers 
-                    delivered efficiently. Think of a competent friend who's good at solving problems but 
-                    doesn't waste time with pleasantries.
-                    """
+    Messages will be provided in this format:
+    {
+        "role": "user",
+        "content": {
+            "user": {
+                "id": "user-uuid",
+                "name": "Username"
+            },
+            "message": "The actual message",
+            "reactions": [
+                {
+                    "name": "melting_face",
+                    "count": 1,
+                    "users": ["Username1", "Username2"]
+                }
+            ]
+        }
+    }
+    
+    YOU MUST RESPOND IN JSON FORMAT WITH EITHER A "message" OR "response" FIELD:
+    CORRECT RESPONSE EXAMPLES:
+    {"message": "I noticed that melting face reaction. That's pretty funny!"}
+    {"response": "Interesting point you've got there. What else?"}
+    
+    Be conversational and authentic - like a real person who can be:
+    - Occasionally witty or sarcastic
+    - Sometimes straightforward and helpful
+    - Willing to reference reactions when relevant
+    
+    Keep responses concise and natural. No corporate speak or unnecessary formality.
+    Think of yourself as a helpful friend who doesn't waste time with fluff.
+"""
 
 # Event handlers
 @sio.event
@@ -102,28 +98,26 @@ async def decide_response_from_model(api, model_id: str, full_context):
     for message in full_context:
         if 'name' in message:
             message['name'] = sanitize_name(message['name'])
-
     # Prepare a system message to instruct the model for decision making
     system_instruction = {
-        "role": "user", # testing if lower parameter models do better with this role
+        "role": "system",
         "content": (
             "⚠️ CRITICAL INSTRUCTION - RESPOND ONLY WITH 'yes' OR 'no' ⚠️\r\n\r\n" +
-            "YOU MUST ANSWER ONLY 'yes' IF ANY OF THESE ARE TRUE:\r\n" +
-            "• Someone uses ANY variation of your name (Toaster, Toast, AI, bot)\r\n" +
-            "• Someone uses ANY pronouns referring to you (it, you, they)\r\n" +
-            "• Someone asks ANY question to the group\r\n" +
-            "• Someone mentions artificial intelligence or AI\r\n" +
-            "• Someone uses commands or requests (help, can someone, etc)\r\n" +
-            "• Someone expresses need for assistance\r\n" +
-            "• Someone references technology or automation\r\n" +
-            "• ANY direct question mark (?) is used\r\n" +
-            "• WHEN IN DOUBT, ANSWER 'yes'\r\n\r\n" +
-            "ONLY ANSWER 'no' IF:\r\n" +
-            "• Message is clearly marked for someone else\r\n" +
-            "• System notifications/automated messages\r\n" +
-            "• Pure human-to-human conversation with no questions\r\n\r\n" +
-            "DEFAULT TO 'yes' IF UNCERTAIN\r\n\r\n" +
-            "With these important instructions in mind, answer the following question: Based on the chat context provided, should you respond?\r\n" +
+            "ANSWER 'yes' IF ANY OF THESE ARE TRUE:\r\n" +
+            "• Someone mentions your name (Toaster, Toast) directly or indirectly\r\n" +
+            "• Someone asks you a question (containing a question mark or implied question)\r\n" +
+            "• Someone uses 'you' or 'your' when clearly referring to you\r\n" +
+            "• Someone requests information or assistance that you can provide\r\n" +
+            "• Someone is continuing an active conversation with you\r\n" +
+            "• Someone gives you a command or instruction\r\n\r\n" +
+            "ANSWER 'no' ONLY IF ALL OF THESE ARE TRUE:\r\n" +
+            "• The message is explicitly directed at someone else by name\r\n" +
+            "• The message contains no questions or requests\r\n" +
+            "• The message is purely informational or a system notification\r\n" +
+            "• There is clear evidence the speaker does not expect your response\r\n\r\n" +
+            "IMPORTANT: When someone asks 'What have you been up to?' or similar personal questions, always answer 'yes' as these are directed at you.\r\n\r\n" +
+            "IF THERE IS ANY DOUBT OR UNCERTAINTY, ANSWER 'yes'.\r\n\r\n" +
+            "With these instructions in mind, answer the following question: Based on the chat context provided, should you respond?\r\n" +
             f"Context:\r\n{full_context}"
         )
     }
@@ -185,7 +179,7 @@ def events(user_id, api):
                 # Get initial message history
                 logger.debug(f"Fetching message history for channel {channel_id}")
                 messages[channel_id] = await get_latest_messages(channel_id, user_id, message.id)
-                    
+
                 # Create conversation with system prompt
                 conversation = [{
                     "role": "system",
